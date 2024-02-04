@@ -1,6 +1,7 @@
 from typing import cast
 
 from psycopg2.extensions import cursor as Cursor
+from typing_extensions import override
 
 from .base import ColumnInfo, FieldInfo
 from .base import Introspection as BaseIntrospection
@@ -33,17 +34,9 @@ class Introspection(BaseIntrospection):
                        'time': 'from datetime import time',
                        'date': 'from datetime import date',
                        'Decimal': 'from decimal import Decimal'}
-    ignored_tables: list[str] = []
-    _get_indexes_query = """
-        SELECT attr.attname, idx.indkey, idx.indisunique, idx.indisprimary
-        FROM pg_catalog.pg_class c, pg_catalog.pg_class c2,
-            pg_catalog.pg_index idx, pg_catalog.pg_attribute attr
-        WHERE c.oid = idx.indrelid
-            AND idx.indexrelid = c2.oid
-            AND attr.attrelid = c.oid
-            AND attr.attnum = idx.indkey[0]
-            AND c.relname = %s"""
+    ignored_tables = []
 
+    @override
     def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
         field_type, opts = self.data_types_reverse[int(data_type)], None
         _import = self.imports.get(field_type)
@@ -52,6 +45,7 @@ class Introspection(BaseIntrospection):
                 return 'AUTO', opts, _import
         return field_type, opts, _import
 
+    @override
     def get_table_list(self, cursor: Cursor):
         """Return a list of table and view names in the current database."""
         cursor.execute("""
@@ -63,6 +57,7 @@ class Introspection(BaseIntrospection):
                 AND pg_catalog.pg_table_is_visible(c.oid)""")
         return [TableInfo(row[0], {'r': 't', 'v': 'v'}[row[1]]) for row in cursor.fetchall() if row[0] not in self.ignored_tables]
 
+    @override
     def get_table_description(self, cursor: Cursor, table_name: str) -> list[FieldInfo]:
         """
         Return a description of the table with the DB-API cursor.description
@@ -86,6 +81,7 @@ class Introspection(BaseIntrospection):
                           type_code=line.type_code,
                           default=field_map[line.name][1]) for line in cursor.description]
 
+    @override
     def get_relations(self,  cursor: Cursor, table_name: str):
         """
         Return a dictionary of {field_name: (field_name_other_table, other_table)}
@@ -106,8 +102,8 @@ class Introspection(BaseIntrospection):
             relations[row[1]] = (row[2], row[0])
         return relations
 
+    @override
     def get_key_columns(self,  cursor: Cursor, table_name: str):
-        key_columns: list[tuple[str, ...]] = []
         cursor.execute("""
             SELECT kcu.column_name, ccu.table_name AS referenced_table, ccu.column_name AS referenced_column
             FROM information_schema.constraint_column_usage ccu
@@ -120,13 +116,20 @@ class Introspection(BaseIntrospection):
                     AND ccu.constraint_schema = tc.constraint_schema
                     AND ccu.constraint_name = tc.constraint_name
             WHERE kcu.table_name = %s AND tc.constraint_type = 'FOREIGN KEY'""", [table_name])
-        key_columns.extend(cursor.fetchall())
-        return key_columns
+        return cast(list[tuple[str, str, str]], cursor.fetchall())
 
     def get_indexes(self,  cursor: Cursor, table_name: str):
         # This query retrieves each index on the given table, including the
         # first associated field name
-        cursor.execute(self._get_indexes_query, [table_name])
+        cursor.execute("""
+        SELECT attr.attname, idx.indkey, idx.indisunique, idx.indisprimary
+        FROM pg_catalog.pg_class c, pg_catalog.pg_class c2,
+            pg_catalog.pg_index idx, pg_catalog.pg_attribute attr
+        WHERE c.oid = idx.indrelid
+            AND idx.indexrelid = c2.oid
+            AND attr.attrelid = c.oid
+            AND attr.attnum = idx.indkey[0]
+            AND c.relname = %s""", [table_name])
         indexes: dict[str, dict[str, bool]] = {}
         for row in cursor.fetchall():
             # row[1] (idx.indkey) is stored in the DB as an array. It comes out as

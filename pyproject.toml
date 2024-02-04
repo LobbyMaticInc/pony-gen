@@ -16,10 +16,11 @@ mysqlclient = "^2.2.2"
 inflection = "^0.5.1"
 python-slugify = "^8.0.3"
 typer = {extras = ["all"], version = "^0.9.0"}
-pony-stubs = "^0.5.2"
+typing-extensions = "^4.9.0"
+deal = "^4.24.3"
 
 [tool.poetry.scripts]
-pony-gen = "apps.cli.__init__:entry_point"
+pony-gen = "src.__main__:app"
 
 
 [tool.poetry.group.dev.dependencies]

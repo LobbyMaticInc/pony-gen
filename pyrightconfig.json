@@ -1,12 +1,12 @@
 {
   "pythonVersion": "3.11",
   "pythonPlatform": "Linux",
-  "include": ["python-code/**/*"],
+  "include": ["src/**/*"],
 
   "exclude": ["**/node_modules", "**/__pycache__"],
   "useLibraryCodeForTypes": true,
   "typeCheckingMode": "basic",
-  "venvPath": "python-code",
+  "venvPath": ".",
 
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,

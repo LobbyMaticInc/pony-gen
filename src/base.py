@@ -1,11 +1,9 @@
-from typing import Any, NamedTuple, NotRequired, TypedDict
+from typing import Any, ClassVar, NamedTuple, NotRequired, TypedDict
 
 from attrs import define
 from pony.orm.dbapiprovider import DBAPIProvider
 from psycopg2.extensions import connection as Connection
 from psycopg2.extensions import cursor as Cursor
-
-# Structure returned by DatabaseIntrospection.get_table_list()
 
 
 class TableInfo(NamedTuple):
@@ -25,14 +23,9 @@ class ColumnInfo(TypedDict):
     options: NotRequired[Any]
 
 
-# Structure returned by the DB-API cursor.description interface (PEP 249)
-
-# def FieldInfo(*args):
-#     return _FieldInfo(args)
-
-
 @define(kw_only=True)
 class FieldInfo:
+    # Structure returned by the DB-API cursor.description interface (PEP 249)
     name: str
     type_code: str | int
     display_size: int | None = None
@@ -47,24 +40,12 @@ class FieldInfo:
 
 @define
 class Introspection:
+    imports: ClassVar[dict[str, str]]
+    data_types_reverse: ClassVar[dict[str | int, str]]
+    ignored_tables: ClassVar[list[str]]
+
     connection: Connection
     provider: DBAPIProvider
-
-    def table_name_converter(self, name: str):
-        """
-        Apply a conversion to the name for the purposes of comparison.
-
-        The default table name converter is for case sensitive comparison.
-        """
-        return name
-
-    def column_name_converter(self, name: str):
-        """
-        Apply a conversion to the column name for the purposes of comparison.
-
-        Use table_name_converter() by default.
-        """
-        return self.table_name_converter(name)
 
     def table_names(self, cursor: Cursor | None = None, include_views=False) -> list[str]:
         """
@@ -85,46 +66,23 @@ class Introspection:
         Return an unsorted list of TableInfo named tuples of all tables and
         views that exist in the database.
         """
-        raise NotImplementedError('subclasses of BaseDatabaseIntrospection may require a get_table_list() method')
+        ...
 
-    # def sequence_list(self):
-    #     """
-    #     Return a list of information about all DB sequences for all models in
-    #     all apps.
-    #     """
-    #     from django.apps import apps
-    #     from django.db import models, router
-
-    #     sequence_list = []
-
-    #     for app_config in apps.get_app_configs():
-    #         for model in router.get_migratable_models(app_config, self.connection.alias):
-    #             if not model._meta.managed:
-    #                 continue
-    #             if model._meta.swapped:
-    #                 continue
-    #             for f in model._meta.local_fields:
-    #                 if isinstance(f, models.AutoField):
-    #                     sequence_list.append({'table': model._meta.db_table, 'column': f.column})
-    #                     break  # Only one AutoField is allowed per model, so don't bother continuing.
-
-    #             for f in model._meta.local_many_to_many:
-    #                 # If this is an m2m using an intermediate table,
-    #                 # we don't need to reset the sequence.
-    #                 if f.remote_field.through is None:
-    #                     sequence_list.append({'table': f.m2m_db_table(), 'column': None})
-
-    #     return sequence_list
-
-    # def get_key_columns(self, cursor, table_name):
-    #     """
-    #     Backends can override this to return a list of:
-    #         (column_name, referenced_table_name, referenced_column_name)
-    #     for all key columns in given table.
-    #     """
-    #     raise NotImplementedError('subclasses of BaseDatabaseIntrospection may require a get_key_columns() method')
+    def get_key_columns(self, cursor: Cursor, table_name: str) -> list[tuple[str, str, str]]:
+        """
+        Backends can override this to return a list of:
+            (column_name, referenced_table_name, referenced_column_name)
+        for all key columns in given table.
+        """
+        ...
 
     def get_constraints(self,  cursor: Cursor, table_name: str) -> dict[str, ColumnInfo]:
+        ...
+
+    def get_table_description(self, cursor: Cursor, table_name: str) -> list[FieldInfo]:
+        ...
+
+    def get_relations(self, cursor: Cursor, table_name: str) -> dict[str, tuple[str, str]]:
         ...
 
     def get_primary_key_columns(self, cursor: Cursor, table_name: str) -> list[str]:
@@ -135,3 +93,6 @@ class Introspection:
             if constraint['primary_key']:
                 return constraint['columns']
         return []
+
+    def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
+        ...

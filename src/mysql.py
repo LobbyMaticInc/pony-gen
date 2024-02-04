@@ -1,7 +1,9 @@
-from typing import Any, cast
+from collections import defaultdict
+from typing import Any, DefaultDict, Iterable, cast
 
 from MySQLdb.constants import FIELD_TYPE
 from psycopg2.extensions import cursor as Cursor
+from typing_extensions import override
 
 from .base import ColumnInfo, FieldInfo
 from .base import Introspection as BaseIntrospection
@@ -9,7 +11,6 @@ from .base import TableInfo
 
 
 class Introspection(BaseIntrospection):
-    #
     data_types_reverse = {FIELD_TYPE.BLOB: 'buffer',  # 'TextField',
                           FIELD_TYPE.CHAR: 'str',  # 'CharField',
                           FIELD_TYPE.DECIMAL: 'Decimal',  # 'DecimalField',
@@ -35,8 +36,8 @@ class Introspection(BaseIntrospection):
                'time': 'from datetime import time',
                'date': 'from datetime import date',
                'Decimal': 'from decimal import Decimal'}
-    # TODO
 
+    @override
     def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
         field_type, opts, _import = self.data_types_reverse[int(data_type)], None, None
         assert _import is None
@@ -46,11 +47,13 @@ class Introspection(BaseIntrospection):
                 return 'AUTO', opts, _import
         return field_type, opts, _import
 
+    @override
     def get_table_list(self, cursor: Cursor):
         """Return a list of table and view names in the current database."""
         cursor.execute("SHOW FULL TABLES")
         return [TableInfo(row[0], {'BASE TABLE': 't', 'VIEW': 'v'}[row[1]]) for row in cursor.fetchall()]
 
+    @override
     def get_table_description(self, cursor: Cursor, table_name: str):
         """
         Return a description of the table with the DB-API cursor.description
@@ -92,6 +95,7 @@ class Introspection(BaseIntrospection):
                                     is_unsigned=field_info[col_name][7]))
         return fields
 
+    @override
     def get_relations(self, cursor: Cursor, table_name: str):
         """
         Return a dictionary of {field_name: (field_name_other_table, other_table)}
@@ -103,12 +107,12 @@ class Introspection(BaseIntrospection):
             relations[my_fieldname] = (other_field, other_table)
         return relations
 
+    @override
     def get_key_columns(self, cursor: Cursor, table_name: str):
         """
         Return a list of (column_name, referenced_table_name, referenced_column_name)
         for all key columns in the given table.
         """
-        key_columns: list[tuple[Any, ...]] = []
         cursor.execute("""
             SELECT column_name, referenced_table_name, referenced_column_name
             FROM information_schema.key_column_usage
@@ -116,75 +120,46 @@ class Introspection(BaseIntrospection):
                 AND table_schema = DATABASE()
                 AND referenced_table_name IS NOT NULL
                 AND referenced_column_name IS NOT NULL""", [table_name])
-        key_columns.extend(cursor.fetchall())
-        return key_columns
+        return cast(list[tuple[str, str, str]], cursor.fetchall())
 
-    def get_storage_engine(self, cursor: Cursor, table_name: str):
-        """
-        Retrieve the storage engine for a given table. Return the default
-        storage engine if the table doesn't exist.
-        """
-        cursor.execute("SELECT engine FROM information_schema.tables WHERE table_name = %s", [table_name])
-        result = cursor.fetchone()
-        if not result:
-            return self.connection.features._mysql_storage_engine
-        return result[0]
-
+    @override
     def get_constraints(self, cursor: Cursor, table_name: str) -> dict[str, ColumnInfo]:
         """
         Retrieve any constraints or keys (unique, pk, fk, check, index) across
         one or more columns.
         """
         quote_name = self.provider.quote_name
-        constraints: dict[str, ColumnInfo] = {}
+        constraints: DefaultDict[str, ColumnInfo] = defaultdict(lambda: {'columns': [],
+                                                                         'primary_key': False,
+                                                                         'unique': False,
+                                                                         'check': False,
+                                                                         'index': True,
+                                                                         'foreign_key': None})
         # Get the actual constraint names and columns
-        name_query = """
-            SELECT kc.`constraint_name`, kc.`column_name`,
-                kc.`referenced_table_name`, kc.`referenced_column_name`
+        cursor.execute("""
+            SELECT kc.`constraint_name`, kc.`column_name`, kc.`referenced_table_name`, kc.`referenced_column_name`
             FROM information_schema.key_column_usage AS kc
-            WHERE
-                kc.table_schema = DATABASE() AND
-                kc.table_name = %s
-        """
-        cursor.execute(name_query, [table_name])
+            WHERE kc.table_schema = DATABASE() AND kc.table_name = %s
+        """, [table_name])
         for constraint, column, ref_table, ref_column in cursor.fetchall():
-            if constraint not in constraints:
-                constraints[constraint] = {'columns': [],
-                                           'primary_key': False,
-                                           'unique': False,
-                                           'index': False,
-                                           'check': False,
-                                           'foreign_key': (ref_table, ref_column) if ref_column else None}
+            constraints[constraint]['foreign_key'] = (ref_table, ref_column) if ref_column else None
             constraints[constraint]['columns'].append(column)
         # Now get the constraint types
-        type_query = """
+        cursor.execute("""
             SELECT c.constraint_name, c.constraint_type
             FROM information_schema.table_constraints AS c
-            WHERE
-                c.table_schema = DATABASE() AND
-                c.table_name = %s
-        """
-        cursor.execute(type_query, [table_name])
-        for constraint, kind in cursor.fetchall():
+            WHERE c.table_schema = DATABASE() AND c.table_name = %s
+        """, [table_name])
+        for constraint, kind in cast(Iterable[tuple[str, str]], cursor.fetchall()):
             if kind.lower() == "primary key":
                 constraints[constraint]['primary_key'] = True
                 constraints[constraint]['unique'] = True
             elif kind.lower() == "unique":
                 constraints[constraint]['unique'] = True
         # Now add in the indexes
-        cursor.execute("SHOW INDEX FROM %s" % quote_name(table_name))
+        cursor.execute("SHOW INDEX FROM %s", [quote_name(table_name)])
         for _table, _non_unique, index, _colseq, column, _type_ in [x[:5] + (x[10],) for x in cursor.fetchall()]:
-            if index not in constraints:
-                constraints[index] = {'columns': [],
-                                      'primary_key': False,
-                                      'unique': False,
-                                      'check': False,
-                                      'index': True,
-                                      'foreign_key': None}
             constraints[index]['index'] = True
             # constraints[index]['type'] = Index.suffix if type_ == 'BTREE' else type_.lower()
             constraints[index]['columns'].append(column)
-        # Convert the sorted sets to lists
-        for constraint in constraints.values():
-            constraint['columns'] = list(constraint['columns'])
         return constraints

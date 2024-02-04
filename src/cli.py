@@ -1,17 +1,20 @@
-import keyword
 import os
 import re
 from collections import OrderedDict, defaultdict
+from itertools import chain
 from typing import DefaultDict, Generator, NotRequired, TypedDict, cast
 
+from attrs import define
 from pony.utils import cached_property
 from psycopg2.extensions import connection as Connection
+
+from src.sanitize_column_name import normalize_col_name
 
 from .base import ColumnInfo, FieldInfo
 from .mysql import Introspection as MysqlIntrospection
 from .postgres import Introspection as PostgresIntrospection
 from .sqlite import Introspection as SqliteIntrospection
-from .utils import import_obj
+from .utils import import_from_string
 
 INROSPECTION_IMPL = {'postgresql': PostgresIntrospection, 'mysql': MysqlIntrospection, 'sqlite': SqliteIntrospection}
 
@@ -33,6 +36,7 @@ class TIntrospection(TypedDict):
     constraints: dict[str, ColumnInfo]
 
 
+@define
 class Command:
     KWARGS_ORDER = ['unique', 'nullable', 'default', 'column']
     imports = {'from pony.orm import *'}
@@ -61,7 +65,7 @@ class Command:
 
     def _make_introspection(self):
         database = ""
-        db = import_obj(database)
+        db = import_from_string(database)
         connection = cast(Connection, db.get_connection())
         Introspection = INROSPECTION_IMPL[db.provider.dialect.lower()]
         introspection = Introspection(connection, provider=db.provider)
@@ -81,7 +85,7 @@ class Command:
             if self.is_pony_table(table_name):
                 continue
             try:
-                relations: dict[str, tuple[str, str]] = introspection.get_relations(cursor, table_name)
+                relations = introspection.get_relations(cursor, table_name)
             except NotImplementedError:
                 if os.environ.get('DEBUG'):
                     raise
@@ -93,13 +97,13 @@ class Command:
                     raise
                 constraints = {}
             primary_key_columns = introspection.get_primary_key_columns(cursor, table_name)
-            unique_columns = [c['columns'][0] for c in constraints.values() if c['unique'] and len(c['columns']) == 1]
+            unique_columns = chain.from_iterable((c['columns'] for c in constraints.values() if c['unique']))
             table_description = introspection.get_table_description(cursor, table_name)
             # normalize field names & increment field name counters
             for field in table_description:
                 if field.name in relations:
                     continue
-                field.name, _, _ = self.normalize_col_name(field.name)
+                field.name, _, _ = normalize_col_name(field.name)
                 field.name = f"{field.name}{counters[(table_name, field.name)] or ''}"
                 counters[(table_name, field.name)] += 1
             # check if it's an m2m table
@@ -133,7 +137,7 @@ class Command:
                 continue
             # calculate relation attributes
             for column_name, (_attr, ref_table) in relations.items():
-                att_name, kwargs, _notes = self.normalize_col_name(column_name, is_related=True)
+                att_name, kwargs, _notes = normalize_col_name(column_name, is_related=True)
                 index = counters[(table_name, att_name)]
                 counters[(table_name, att_name)] += 1
                 att_name = f"{att_name}{index or ''}"
@@ -151,7 +155,7 @@ class Command:
             table_intro = ret[table_name]
             table_intro["relations"] = relations
             table_intro["description"] = table_description
-            table_intro["unique_columns"] = unique_columns
+            table_intro["unique_columns"] = list(unique_columns)
             table_intro["primary_key_columns"] = primary_key_columns
             table_intro["constraints"] = constraints
         return ret
@@ -238,36 +242,6 @@ class Command:
             if len(primary_key_columns) > 1:
                 attrs = [column_to_field_name[c] for c in primary_key_columns]
                 yield f"    PrimaryKey({', '.join(attrs)})"
-
-    def normalize_col_name(self, col_name: str, is_related=False):
-        """
-        Modify the column name to make it Python-compatible as a field name
-        """
-        field_params: dict[str, str] = {}
-        field_notes: list[str] = []
-        new_name = col_name.lower()
-        if new_name != col_name:
-            field_notes.append('Field name made lowercase.')
-        if is_related and col_name.endswith('_id'):
-            new_name = new_name[:-3]
-        new_name, num_repl = re.subn(r'\W', '_', new_name)
-        if num_repl > 0:
-            field_notes.append('Field renamed to remove unsuitable characters.')
-        if new_name.startswith('_'):
-            new_name = 'attr%s' % new_name
-            field_notes.append("Field renamed because it started with '_'.")
-        if new_name.endswith('_'):
-            new_name = '%sattr' % new_name
-            field_notes.append("Field renamed because it ended with '_'.")
-        if keyword.iskeyword(new_name):
-            new_name += '_attr'
-            field_notes.append('Field renamed because it was a Python reserved word.')
-        if new_name[0].isdigit():
-            new_name = 'number_%s' % new_name
-            field_notes.append("Field renamed because it wasn't a valid Python identifier.")
-        if col_name != new_name:
-            field_params['column'] = col_name
-        return new_name, field_params, field_notes
 
     def get_field_type(self, table_name: str, row: FieldInfo):
         """

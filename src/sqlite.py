@@ -2,6 +2,7 @@ import re
 from typing import cast
 
 from psycopg2.extensions import cursor as Cursor
+from typing_extensions import override
 
 from .base import ColumnInfo, FieldInfo
 from .base import Introspection as BaseIntrospection
@@ -41,6 +42,7 @@ class Introspection(BaseIntrospection):
                'Decimal': 'from decimal import Decimal',
                'buffer': 'from pony.py23compat import buffer'}
 
+    @override
     def get_field_type(self, data_type: str | int, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
         opts = None
         data_type = str(data_type).lower()
@@ -58,6 +60,7 @@ class Introspection(BaseIntrospection):
                 return 'AUTO', opts, _import
         return field_type, opts, _import
 
+    @override
     def get_table_list(self, cursor: Cursor):
         """Return a list of table and view names in the current database."""
         # Skip the sqlite_sequence system table used for autoincrement key
@@ -68,6 +71,7 @@ class Introspection(BaseIntrospection):
             ORDER BY name""")
         return [TableInfo(row[0], row[1][0]) for row in cursor.fetchall()]
 
+    @override
     def get_table_description(self, cursor: Cursor, table_name: str):
         """
         Return a description of the table with the DB-API cursor.description
@@ -82,6 +86,7 @@ class Introspection(BaseIntrospection):
                           scale=None,
                           null_ok=not field[3]) for field in cursor.fetchall()]
 
+    @override
     def get_relations(self, cursor: Cursor, table_name: str):
         """
         Return a dictionary of {field_name: (field_name_other_table, other_table)}
@@ -129,12 +134,13 @@ class Introspection(BaseIntrospection):
                     break
         return relations
 
+    @override
     def get_key_columns(self, cursor: Cursor, table_name: str):
         """
         Return a list of (column_name, referenced_table_name, referenced_column_name)
         for all key columns in given table.
         """
-        key_columns: list[tuple[str, ...]] = []
+        key_columns: list[tuple[str, str, str]] = []
         # Schema for this table
         cursor.execute("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type = ?", [table_name, "table"])
         results = cast(str, cursor.fetchone()[0]).strip()
@@ -149,8 +155,8 @@ class Introspection(BaseIntrospection):
             m = re.search(r'"(.*)".*references (.*) \(["|](.*)["|]\)', field_desc, re.I)
             if not m:
                 continue
-            # This will append (column_name, referenced_table_name, referenced_column_name) to key_columns
-            key_columns.append(tuple(s.strip('"') for s in m.groups()))
+            groups = m.groups()
+            key_columns.append((groups[0].strip('"'), groups[1].strip('"'), groups[2].strip('"')))
         return key_columns
     # def get_indexes(self, cursor: Cursor, table_name: str):
     #     warnings.warn(
