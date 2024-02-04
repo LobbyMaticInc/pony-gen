@@ -13,6 +13,8 @@ autopep8 = "^2.0.4"
 flake8 = "^7.0.0"
 psycopg2-binary = "^2.9.9"
 mysqlclient = "^2.2.2"
+inflection = "^0.5.1"
+python-slugify = "^8.0.3"
 
 [tool.poetry.scripts]
 pony-gen = "apps.cli.__init__:entry_point"
