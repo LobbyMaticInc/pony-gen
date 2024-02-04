@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "src"
+version = "0.0.1"
+description = ""
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+pony = "^0.7.17"
+attrs = "^23.2.0"
+autopep8 = "^2.0.4"
+flake8 = "^7.0.0"
+psycopg2-binary = "^2.9.9"
+mysqlclient = "^2.2.2"
+
+[tool.poetry.scripts]
+pony-gen = "apps.cli.__init__:entry_point"
+
+
+[tool.poetry.group.dev.dependencies]
+pony-stubs = "^0.5.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[data]
+packages = ["src"] 
+
+[build]
+generate-setup-file = true
+
+

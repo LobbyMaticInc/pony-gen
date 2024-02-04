@@ -1,0 +1,118 @@
+{
+  "editor.bracketPairColorization.independentColorPoolPerBracketType": false,
+  "files.eol": "\n",
+  "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+  "extensions.ignoreRecommendations": false,
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "editor.detectIndentation": true,
+  "editor.linkedEditing": true,
+  "editor.suggestSelection": "first",
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit",
+    "source.sortPackageJson": "explicit",
+    "source.fixAll.eslint": "explicit"
+  },
+  "editor.rulers": [160],
+  "files.associations": { "*.tsx": "typescriptreact" },
+  "files.autoSave": "afterDelay",
+  // "files.autoSaveDelay": 3600000,
+  // "files.autoSaveDelay": 100,
+  "explorer.confirmDelete": false,
+  "workbench.iconTheme": "material-icon-theme",
+  "material-icon-theme.activeIconPack": "react_redux",
+  "indentRainbow.colors": ["rgba(34, 34, 34, 1)", "rgba(17, 17, 17, 1)"],
+  "indentRainbow.ignoreErrorLanguages": ["python", "docker"],
+  "emmet.includeLanguages": {
+    "javascript": "javascriptreact"
+  },
+  "[json][jsonc][graphql][typescript][javascript][javascriptreact][typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.tabSize": 2
+  },
+  "[html]": {
+    "editor.defaultFormatter": "vscode.html-language-features"
+  },
+  "javascript.updateImportsOnFileMove.enabled": "always",
+  "typescript.updateImportsOnFileMove.enabled": "always",
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "isort.args": ["-rc", "--atomic"],
+  "material-icon-theme.files.associations": {
+    "Dockerfile.*": "docker",
+    "docker-compose.*": "docker",
+    ".env.*": "tune"
+  },
+  "material-icon-theme.folders.associations": {
+    "aws-utils": "aws",
+    "aws-paths": "aws",
+    "blockchain": "contract",
+    "hive": "contract",
+    "solidity": "contract",
+    "discord": "core",
+    "chrome_extension": "middleware"
+  },
+  "workbench.editor.wrapTabs": true,
+  "go.toolsManagement.autoUpdate": true,
+  "redhat.telemetry.enabled": false,
+  "security.workspace.trust.untrustedFiles": "open",
+  "bracket-pair-colorizer-2.depreciation-notice": false,
+  "workbench.startupEditor": "none",
+  "explorer.confirmDragAndDrop": false,
+  "git.autofetch": true,
+  "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
+  "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
+  "typescript.format.insertSpaceAfterOpeningAndBeforeClosingEmptyBraces": false,
+  "javascript.format.insertSpaceAfterOpeningAndBeforeClosingEmptyBraces": false,
+  "javascript.format.insertSpaceAfterConstructor": true,
+  "prettier.bracketSpacing": true,
+  "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": false,
+  "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": false,
+  "javascript.format.insertSpaceAfterOpeningAndBeforeClosingJsxExpressionBraces": false,
+  "typescript.format.insertSpaceAfterOpeningAndBeforeClosingJsxExpressionBraces": false,
+  "prettier.semi": false,
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+  "isort.interpreter": ["${workspaceFolder}\\.venv\\Scripts\\python.exe"],
+  "python.autoComplete.extraPaths": ["${workspaceFolder}\\python-code"],
+  "python.analysis.extraPaths": ["${workspaceFolder}\\python-code"],
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "autopep8.interpreter": ["${workspaceFolder}\\.venv\\Scripts\\python.exe"],
+  "autopep8.importStrategy": "fromEnvironment",
+  "python.formatting.provider": "none",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.autopep8",
+    "editor.tabSize": 4,
+    "source.fixAll": true,
+    "editor.formatOnSave": true
+  },
+  "python.testing.autoTestDiscoverOnSaveEnabled": false,
+  "autoflake-extension.remove-all-unused-imports": true,
+  "autoflake-extension.expand-star-imports": true,
+  "autopep8.args": ["--max-line-length", "160", "--experimental"],
+  "python.analysis.useLibraryCodeForTypes": true,
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.completeFunctionParens": true,
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.autoSearchPaths": true,
+  "python.analysis.indexing": true,
+  "python.analysis.packageIndexDepths": [
+    {
+      "name": "",
+      "depth": 2,
+      "includeAllSymbols": true
+    }
+  ],
+  "python.languageServer": "Pylance",
+  "jupyter.runStartupCommands": ["import matplotlib.pyplot as plt", "plt.style.use('dark_background')"],
+  "flake8.args": ["--max-line-length=160"],
+  "flake8.interpreter": ["${workspaceFolder}\\.venv\\Scripts\\python.exe"],
+  "notebook.cellToolbarLocation": {
+    "default": "right",
+    "jupyter-notebook": "left"
+  },
+
+  "flake8.importStrategy": "fromEnvironment",
+  "python.sortImports.args": ["--remove-unused", "--ignore-case", "--ignore-parent", "--in-place"],
+
+  "jupyter.askForKernelRestart": false,
+  "python.pythonPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+}
