@@ -4,10 +4,10 @@ import re
 from collections import OrderedDict, defaultdict
 from typing import DefaultDict, Generator, NotRequired, TypedDict, cast
 
-from .base import ColumnInfo, FieldInfo
 from pony.utils import cached_property
 from psycopg2.extensions import connection as Connection
 
+from .base import ColumnInfo, FieldInfo
 from .mysql import Introspection as MysqlIntrospection
 from .postgres import Introspection as PostgresIntrospection
 from .sqlite import Introspection as SqliteIntrospection
@@ -34,7 +34,6 @@ class TIntrospection(TypedDict):
 
 
 class Command:
-    help = "Introspects the database tables in the given database and outputs a Django model module."
     KWARGS_ORDER = ['unique', 'nullable', 'default', 'column']
     imports = {'from pony.orm import *'}
 
