@@ -8,7 +8,7 @@ from slugify import slugify
 
 
 @deal.pure
-def str_to_py_identifier(input_string: str, *, case_type: Literal['snake', 'camel', 'title', 'const'] = 'snake'):
+def str_to_py_identifier(input_string: str, *, is_related: bool = False, case_type: Literal['snake', 'camel', 'title', 'const'] = 'snake'):
     sanitized_string = slugify(input_string, separator='_').replace('.', '_')
     if not sanitized_string or not sanitized_string[0].isalpha():
         sanitized_string = f"_{''.join(filter(str.isalnum, sanitized_string))}"
@@ -35,25 +35,27 @@ def normalize_col_name(col_name: str, is_related=False):
     field_params: dict[str, str] = {}
     field_notes: list[str] = []
     new_name = col_name.lower()
-    if new_name != col_name:
-        field_notes.append('Field name made lowercase.')
-    if is_related and col_name.endswith('_id'):
-        new_name = new_name[:-3]
-    new_name, num_repl = re.subn(r'\W', '_', new_name)
-    if num_repl > 0:
-        field_notes.append('Field renamed to remove unsuitable characters.')
-    if new_name.startswith('_'):
-        new_name = f'attr{new_name}'
-        field_notes.append("Field renamed because it started with '_'.")
-    if new_name.endswith('_'):
-        new_name = f'{new_name}attr'
-        field_notes.append("Field renamed because it ended with '_'.")
-    if iskeyword(new_name):
-        new_name += '_attr'
-        field_notes.append('Field renamed because it was a Python reserved word.')
-    if new_name[0].isdigit():
-        new_name = 'number_{new_name}'
-        field_notes.append("Field renamed because it wasn't a valid Python identifier.")
+    match (new_name, is_related, col_name):
+        case (new_name, _, _) if new_name != col_name:
+            field_notes.append('Field name made lowercase.')
+        case (new_name, True, col_name) if col_name.endswith('_id'):
+            new_name = new_name[:-3]
+        case (new_name, _, _):
+            new_name, num_repl = re.subn(r'\W', '_', new_name)
+            if num_repl > 0:
+                field_notes.append('Field renamed to remove nonalphanumerics and replace them with underscores.')
+        case (new_name, _, _) if new_name.startswith('_'):
+            new_name = f'attr{new_name}'
+            field_notes.append("Field renamed because it started with '_'.")
+        case (new_name, _, _) if new_name.endswith('_'):
+            new_name = f'{new_name}attr'
+            field_notes.append("Field renamed because it ended with '_'.")
+        case (new_name, _, _) if iskeyword(new_name):
+            new_name += '_attr'
+            field_notes.append('Field renamed because it was a Python reserved word.')
+        case (new_name, _, _) if new_name[0].isdigit():
+            new_name = f'number_{new_name}'
+            field_notes.append("Field renamed because it wasn't a valid Python identifier.")
     if col_name != new_name:
         field_params['column'] = col_name
     return new_name, field_params, field_notes

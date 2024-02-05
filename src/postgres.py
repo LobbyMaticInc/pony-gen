@@ -5,7 +5,7 @@ from typing_extensions import override
 
 from .base import ColumnInfo, FieldInfo
 from .base import Introspection as BaseIntrospection
-from .base import TableInfo
+from .base import TableInfo, TRelation
 
 
 class Introspection(BaseIntrospection):
@@ -70,8 +70,6 @@ class Introspection(BaseIntrospection):
                             WHERE table_name = %s""", [table_name])
         field_map: dict[str, tuple[str, ...]] = {line[0]: line[1:] for line in cursor.fetchall()}
         cursor.execute("SELECT * FROM %s LIMIT 1" % self.provider.quote_name(table_name))
-        if cursor.description is None:
-            return []
         return [FieldInfo(display_size=line.display_size,
                           internal_size=line.internal_size,
                           name=line.name,
@@ -79,7 +77,7 @@ class Introspection(BaseIntrospection):
                           precision=line.precision,
                           scale=line.scale,
                           type_code=line.type_code,
-                          default=field_map[line.name][1]) for line in cursor.description]
+                          default=field_map[line.name][1]) for line in cursor.description] if cursor.description is not None else []
 
     @override
     def get_relations(self,  cursor: Cursor, table_name: str):
@@ -96,11 +94,7 @@ class Introspection(BaseIntrospection):
             LEFT JOIN pg_attribute a2 ON c2.oid = a2.attrelid AND a2.attnum = con.confkey[1]
             WHERE c1.relname = %s
                 AND con.contype = 'f'""", [table_name])
-        relations: dict[str, tuple[str, str]] = {}
-        fetched = cursor.fetchall()
-        for row in fetched:
-            relations[row[1]] = (row[2], row[0])
-        return relations
+        return {row[1]: TRelation(row[2], row[0])for row in cursor.fetchall()}
 
     @override
     def get_key_columns(self,  cursor: Cursor, table_name: str):
@@ -147,6 +141,7 @@ class Introspection(BaseIntrospection):
                 indexes[row[0]]['unique'] = True
         return indexes
 
+    @override
     def get_constraints(self,  cursor: Cursor, table_name: str) -> dict[str, ColumnInfo]:
         """
         Retrieve any constraints or keys (unique, pk, fk, check, index) across
@@ -184,13 +179,13 @@ class Introspection(BaseIntrospection):
             WHERE ns.nspname = %s AND cl.relname = %s
         """, ["public", table_name])
         for constraint, columns, kind, used_cols, options in cursor.fetchall():
-            constraints[cast(str, constraint)] = {"columns": cast(list[str], columns),
-                                                  "primary_key": kind == "p",
-                                                  "unique": kind in ["p", "u"],
-                                                  "foreign_key": tuple(cast(str, used_cols).split(".", 1)) if kind == "f" else None,
-                                                  "check": kind == "c",
-                                                  "index": False,
-                                                  "options": options}
+            constraints[constraint] = {"columns": cast(list[str], columns),
+                                       "primary_key": kind == "p",
+                                       "unique": kind in ["p", "u"],
+                                       "foreign_key": tuple(cast(str, used_cols).split(".", 1)) if kind == "f" else None,
+                                       "check": kind == "c",
+                                       "index": False,
+                                       "options": options}
         # Now get indexes
         # The row_number() function for ordering the index fields can be
         # replaced by WITH ORDINALITY in the unnest() functions when support

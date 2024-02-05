@@ -18,7 +18,7 @@ def validate_database_import_str(value: str) -> str:
 def gen(database_import_str: Annotated[str, typer.Argument(help="Pony Database instance import string in the format 'app.path.to.file:db_var_name'. ",
                                                            callback=validate_database_import_str)]):
     """Introspects the database tables in the given database and generates pony models"""
-    for line in Command().get_output():
+    for line in Command(database_import_str).get_output():
         print(line)
 
 

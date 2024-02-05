@@ -6,7 +6,7 @@ from typing_extensions import override
 
 from .base import ColumnInfo, FieldInfo
 from .base import Introspection as BaseIntrospection
-from .base import TableInfo
+from .base import TableInfo, TRelation
 
 field_size_re = re.compile(r'^\s*(?:var)?char\s*\(\s*(\d+)\s*\)\s*$')
 
@@ -93,14 +93,13 @@ class Introspection(BaseIntrospection):
         representing all relationships to the given table.
         """
         # Dictionary of relations to return
-        relations: dict[str, tuple[str, str]] = {}
+        relations: dict[str, TRelation] = {}
         # Schema for this table
         cursor.execute("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type = ?", [table_name, "table"])
-        try:
-            results = cast(str, cursor.fetchone()[0]).strip()
-        except TypeError:
+        if (raw := cursor.fetchone()) is None:
             # It might be a view, then no results will be returned
             return relations
+        results = cast(tuple[str], raw)[0].strip()
         results = results[results.index('(') + 1:results.rindex(')')]
         # Walk through and look for references to other tables. SQLite doesn't
         # really have enforced references, but since it echoes out the SQL used
@@ -130,7 +129,7 @@ class Introspection(BaseIntrospection):
                     continue
                 other_name = other_desc.split(' ', 1)[0].strip('"')
                 if other_name == column:
-                    relations[field_name] = (other_name, table)
+                    relations[field_name] = TRelation(other_name, table)
                     break
         return relations
 
@@ -209,6 +208,7 @@ class Introspection(BaseIntrospection):
                  'pk': field[5],  # undocumented
                  } for field in cursor.fetchall()]
 
+    @override
     def get_constraints(self, cursor: Cursor, table_name: str) -> dict[str, ColumnInfo]:
         """
         Retrieve any constraints or keys (unique, pk, fk, check, index) across

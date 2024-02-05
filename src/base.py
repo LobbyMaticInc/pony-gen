@@ -39,6 +39,12 @@ class FieldInfo:
 
 
 @define
+class TRelation:
+    field_name_ref: str
+    table_ref: str
+
+
+@define
 class Introspection:
     imports: ClassVar[dict[str, str]]
     data_types_reverse: ClassVar[dict[str | int, str]]
@@ -61,6 +67,15 @@ class Introspection:
                 return get_names(cursor)
         return get_names(cursor)
 
+    def get_primary_key_columns(self, cursor: Cursor, table_name: str) -> list[str]:
+        """
+        Return the name of the primary key column for the given table.
+        """
+        for constraint in self.get_constraints(cursor, table_name).values():
+            if constraint['primary_key']:
+                return constraint['columns']
+        return []
+
     def get_table_list(self, cursor: Cursor) -> list[TableInfo]:
         """
         Return an unsorted list of TableInfo named tuples of all tables and
@@ -82,17 +97,8 @@ class Introspection:
     def get_table_description(self, cursor: Cursor, table_name: str) -> list[FieldInfo]:
         ...
 
-    def get_relations(self, cursor: Cursor, table_name: str) -> dict[str, tuple[str, str]]:
+    def get_relations(self, cursor: Cursor, table_name: str) -> dict[str, TRelation]:
         ...
-
-    def get_primary_key_columns(self, cursor: Cursor, table_name: str) -> list[str]:
-        """
-        Return the name of the primary key column for the given table.
-        """
-        for constraint in self.get_constraints(cursor, table_name).values():
-            if constraint['primary_key']:
-                return constraint['columns']
-        return []
 
     def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
         ...

@@ -7,7 +7,7 @@ from typing_extensions import override
 
 from .base import ColumnInfo, FieldInfo
 from .base import Introspection as BaseIntrospection
-from .base import TableInfo
+from .base import TableInfo, TRelation
 
 
 class Introspection(BaseIntrospection):
@@ -101,11 +101,7 @@ class Introspection(BaseIntrospection):
         Return a dictionary of {field_name: (field_name_other_table, other_table)}
         representing all relationships to the given table.
         """
-        constraints = self.get_key_columns(cursor, table_name)
-        relations: dict[str, tuple[str, str]] = {}
-        for my_fieldname, other_table, other_field in constraints:
-            relations[my_fieldname] = (other_field, other_table)
-        return relations
+        return {column_fieldname: TRelation(field_ref, table_ref) for column_fieldname, table_ref, field_ref in self.get_key_columns(cursor, table_name)}
 
     @override
     def get_key_columns(self, cursor: Cursor, table_name: str):
