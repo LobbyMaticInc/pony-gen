@@ -16,22 +16,22 @@ Pony-Gen is released under the MIT License. See the LICENSE file for more detail
 
 ## Installation
 
-Please install this package in editable mode and `git pull` frequently
+Please install this package in editable mode
 
 ```
 pip install -e .
 ```
 
-**Currently requires Python 3 and PostgreSQL database**
+**Currently requires Python 3.11**
 
 ## Usage
 
-The utility accepts path to `pony.orm.Database` object for `--database` argument.
+The utility accepts a path to `pony.orm.Database` in a format similiar to gunicorn and uvicorn app factory pattern.
 
 For example if you have
 
 ```python
-# app/db.py
+# src/db.py
 
 db = Database(provider='postgres', **the_rest)
 ```
@@ -39,17 +39,7 @@ db = Database(provider='postgres', **the_rest)
 Then run
 
 ```
-python -m introspect --database app.db.db
-```
-
-There are some **examples** in the examples dir. To run them:
-
-```
-cd examples
-# Fill the parameters of your database connection in simple.py & corporate_directory.py
-python -m introspect --database=corporate_directory.db > out/corporate_directory.py
-# or
-python -m introspect --database=simple.db > out/simple.py
+pony-gen src.db:db
 ```
 
 **Current limitations:**

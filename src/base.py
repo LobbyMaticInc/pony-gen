@@ -48,24 +48,19 @@ class TRelation:
 class Introspection:
     imports: ClassVar[dict[str, str]]
     data_types_reverse: ClassVar[dict[str | int, str]]
-    ignored_tables: ClassVar[list[str]]
+    ignored_tables: ClassVar[list[str]] = ['migration', 'pony_version']
 
     connection: Connection
     provider: DBAPIProvider
 
-    def table_names(self, cursor: Cursor | None = None, include_views=False) -> list[str]:
+    def table_names(self, cursor: Cursor, include_views=False) -> list[str]:
         """
         Return a list of names of all tables that exist in the database.
         Sort the returned table list by Python's default sorting. Do NOT use
         the database's ORDER BY here to avoid subtle differences in sorting
         order between databases.
         """
-        def get_names(cursor: Cursor) -> list[str]:
-            return sorted(ti.name for ti in self.get_table_list(cursor) if include_views or ti.type == 't')
-        if cursor is None:
-            with self.connection.cursor() as cursor:
-                return get_names(cursor)
-        return get_names(cursor)
+        return sorted(ti.name for ti in self.get_table_list(cursor) if (include_views or ti.type == 't') and ti.name not in self.ignored_tables)
 
     def get_primary_key_columns(self, cursor: Cursor, table_name: str) -> list[str]:
         """

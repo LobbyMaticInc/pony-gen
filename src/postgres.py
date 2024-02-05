@@ -29,11 +29,11 @@ class Introspection(BaseIntrospection):
                           1700: 'Decimal',  # 'DecimalField',
                           2950: 'UUID'}  # 'UUIDField',
     imports = {'UUID': 'from uuid import UUID',
-                       'LongStr': 'from pony.orm.ormtypes import LongStr',
-                       'datetime': 'from datetime import datetime',
-                       'time': 'from datetime import time',
-                       'date': 'from datetime import date',
-                       'Decimal': 'from decimal import Decimal'}
+               'LongStr': 'from pony.orm.ormtypes import LongStr',
+               'datetime': 'from datetime import datetime',
+               'time': 'from datetime import time',
+               'date': 'from datetime import date',
+               'Decimal': 'from decimal import Decimal'}
     ignored_tables = []
 
     @override
