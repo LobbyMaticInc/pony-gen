@@ -28,6 +28,7 @@ class Introspection(BaseIntrospection):
                           1266: 'time',  # 'TimeField',
                           1700: 'Decimal',  # 'DecimalField',
                           2950: 'UUID'}  # 'UUIDField',
+
     imports = {'UUID': 'from uuid import UUID',
                'LongStr': 'from pony.orm.ormtypes import LongStr',
                'datetime': 'from datetime import datetime',
@@ -37,13 +38,10 @@ class Introspection(BaseIntrospection):
     ignored_tables = []
 
     @override
-    def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
-        field_type, opts = self.data_types_reverse[int(data_type)], None
-        _import = self.imports.get(field_type)
-        if description.default and 'nextval' in description.default:
-            if field_type == 'int':
-                return 'AUTO', opts, _import
-        return field_type, opts, _import
+    def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int], str | None]:
+        field_type = self.data_types_reverse[int(data_type)]
+        field_type = 'AUTO' if 'nextval' in (description.default or '') and field_type == 'int' else field_type
+        return field_type, cast(dict[str, int], {}), self.imports.get(field_type)
 
     @override
     def get_table_list(self, cursor: Cursor):
@@ -55,7 +53,7 @@ class Introspection(BaseIntrospection):
             WHERE c.relkind IN ('r', 'v')
                 AND n.nspname NOT IN ('pg_catalog', 'pg_toast')
                 AND pg_catalog.pg_table_is_visible(c.oid)""")
-        return [TableInfo(row[0], {'r': 't', 'v': 'v'}[row[1]]) for row in cursor.fetchall() if row[0] not in self.ignored_tables]
+        return [TableInfo(row[0], 'table' if row[1] == 'r' else "view") for row in cursor.fetchall() if row[0] not in self.ignored_tables]
 
     @override
     def get_table_description(self, cursor: Cursor, table_name: str) -> list[FieldInfo]:
@@ -70,6 +68,11 @@ class Introspection(BaseIntrospection):
                             WHERE table_name = %s""", [table_name])
         field_map: dict[str, tuple[str, ...]] = {line[0]: line[1:] for line in cursor.fetchall()}
         cursor.execute("SELECT * FROM %s LIMIT 1" % self.provider.quote_name(table_name))
+        for line in cursor.description:
+            try:
+                _ = self.data_types_reverse[int(line.type_code)]
+            except Exception:
+                print(line)
         return [FieldInfo(display_size=line.display_size,
                           internal_size=line.internal_size,
                           name=line.name,

@@ -1,3 +1,5 @@
+from ast import (AST, AnnAssign, Assign, Attribute, Call, ClassDef, Constant,
+                 Expr, FunctionDef, Name, keyword, parse)
 from collections import OrderedDict, defaultdict
 from itertools import chain
 from typing import DefaultDict, Generator, cast
@@ -9,9 +11,9 @@ from psycopg2.extensions import connection as Connection
 from src.base import ColumnInfo, FieldInfo, Introspection, TRelation
 from src.mysql import Introspection as MysqlIntrospection
 from src.postgres import Introspection as PostgresIntrospection
-from src.sanitize_column_name import normalize_col_name, str_to_py_identifier
 from src.sqlite import Introspection as SqliteIntrospection
-from src.utils import import_from_string
+from src.utils import (import_from_string, normalize_col_name,
+                       str_to_py_identifier)
 
 INROSPECTION_IMPL = {'postgresql': PostgresIntrospection, 'mysql': MysqlIntrospection, 'sqlite': SqliteIntrospection}
 
@@ -24,6 +26,7 @@ class RelatedTable:
 
 @define(kw_only=True)
 class FieldType:
+    import_str: str | None
     type: str
     params: OrderedDict[str, str | int]
     notes: list[str]
@@ -51,20 +54,93 @@ class TIntrospection:
 @define
 class Command:
     KWARGS_ORDER = ['unique', 'nullable', 'default', 'column']
-    imports = {'from pony.orm import Required, Optional, PrimaryKey, Database'}
+    imports = {"import strawberry",
+               "from typing import Any",
+               "from decimal import Decimal",
+               "from datetime import datetime, date, time, timedelta",
+               "from enum import Enum",
+               "from pony.orm import Database",
+               "from pony.orm import PrimaryKey",
+               "from pony.orm import Json",
+               "from pony.orm import Optional",
+               "from pony.orm import PrimaryKey",
+               "from pony.orm import Required",
+               "from pony.orm import Set, composite_key",
+               "from pony.orm import composite_key",
+               "from pony.orm import LongStr",
+               "from pony.orm import Json",
+               "from pony.orm import IntArray",
+               "from pony.orm import StrArray",
+               "from pony.orm import FloatArray"}
 
     database_import_str: str
     introspection: Introspection = field(init=False)
     field_counters: DefaultDict[tuple[str, str], int] = field(factory=lambda: defaultdict(int))
     relations_counters: DefaultDict[tuple[str, str], int] = field(factory=lambda: defaultdict(int))
 
-    def get_output(self) -> Generator[str, None, None]:
-        lines = list(self._get_output())
-        yield "# This is an auto-generated module with pony entities."
-        yield ''
-        yield from self.imports
-        yield ''
-        yield from lines
+    def get_output(self) -> Generator[AST, None, None]:
+        db = import_from_string(self.database_import_str)
+        with db_session():
+            connection = cast(Connection, db.get_connection())
+            Introspection = INROSPECTION_IMPL[db.provider.dialect.lower()]
+            introspection = Introspection(connection, provider=db.provider)
+            all_data = self._make_introspection(introspection)
+        for table_name, data in all_data.items():
+            model_name = str_to_py_identifier(table_name, case_type='title')
+            pony_model_body: list[Expr | Assign | FunctionDef] = [Assign(targets=[Name(id="_table_")], value=Constant(value=table_name), lineno=None, simple=1)]
+            gql_type_body: list[AnnAssign] = []
+            for row in data.description:
+                comment_notes: list[str] = []
+                extra_params: OrderedDict[str, str | bool | int] = OrderedDict()  # Holds Field parameters such as 'column'.
+                field_kwargs: dict[str, str | bool | int] = {}
+                if [row.name] == data.primary_key_columns:
+                    extra_params['primary_key'] = True
+                elif row.name in data.unique_columns:
+                    field_kwargs['unique'] = True
+                field_type = self.get_field_type(introspection, table_name, row)
+                if field_type.import_str:
+                    self.imports.add(field_type.import_str)
+                if row.name not in data.relations:
+                    extra_params.update(field_type.params)
+                    field_kwargs.update(field_type.params)
+                    comment_notes.extend(field_type.notes)
+                if row.name == 'id' and extra_params == {'primary_key': True} and field_type.type == 'AUTO':
+                    continue
+                if row.null_ok:
+                    extra_params['null'] = True
+                if row.name not in data.relations:
+                    cls = 'PrimaryKey' if extra_params.get('primary_key') else 'Optional' if extra_params.get('null') else 'Required'
+                    attr_name, kwargs, notes = normalize_col_name(row.name)
+                    comment_notes += notes
+                    field_kwargs.update(kwargs)
+                    ordered_kwargs = OrderedDict((key, repr(field_kwargs[key])) for key in self.KWARGS_ORDER if key in field_kwargs)
+                    keyword_asts = [keyword(arg=arg, value=Constant(value=value)) for arg, value in ordered_kwargs.items() if value is not None]
+                    pony_model_body.append(Assign(targets=[Name(id=attr_name)],
+                                                  value=Call(func=Name(id=cls),
+                                                             args=[Name(id=field_type.type)],
+                                                             keywords=keyword_asts),
+                                                  lineno=None, simple=1))
+                    gql_type_body.append(AnnAssign(target=Name(id=attr_name), annotation=Name(id=field_type.type), value=None, simple=1))
+            for attr in data.rel_attrs:
+                model = str_to_py_identifier(attr.table, case_type='title')
+                if self.relations_counters[(table_name, attr.table)] > 1:
+                    attr.kwargs['reverse'] = attr.reverse
+                keyword_asts = [keyword(arg=arg, value=Constant(value=value)) for arg, value in attr.kwargs.items() if value is not None]
+                pony_model_body.append(Assign(targets=[Name(id=attr.name)],
+                                              value=Call(func=Name(id=attr.cls),
+                                                         args=[Name(id=model)],
+                                                         keywords=keyword_asts),
+                                              lineno=None, simple=1))
+            if len(data.primary_key_columns) > 1:
+                pony_model_body.append(Expr(value=Call(func=Name(id='PrimaryKey'),
+                                                       args=[Name(id=key.lower()) for key in data.primary_key_columns],
+                                                       keywords=[])))
+            yield from parse("# This is an auto-generated module with pony entities.").body
+            yield from parse("\n".join(self.imports)).body
+            yield from parse('db = Database()').body
+            strawberry_type = Attribute(value=Name(id='strawberry'), attr='type')
+            yield ClassDef(name=model_name + "Type", decorator_list=[strawberry_type], bases=[], keywords=[], body=gql_type_body)
+            yield ClassDef(name=model_name, decorator_list=[], bases=[Name(id='db.Entity')], body=pony_model_body, keywords=[])
 
     def _make_introspection(self, introspection: Introspection):
         cursor = introspection.connection.cursor()
@@ -116,78 +192,15 @@ class Command:
                 self.relations_counters[(relation.table_ref, table_name)] += 1
         return ret
 
-    def _get_output(self):
-        db = import_from_string(self.database_import_str)
-        with db_session():
-            connection = cast(Connection, db.get_connection())
-            Introspection = INROSPECTION_IMPL[db.provider.dialect.lower()]
-            introspection = Introspection(connection, provider=db.provider)
-            all_data = self._make_introspection(introspection)
-        yield 'db = Database()'
-        for table_name, data in all_data.items():
-            model_name = str_to_py_identifier(table_name, case_type='title')
-            yield f'class {model_name}(db.Entity):'
-            yield f'    _table_ = "{table_name}"'
-            for row in data.description:
-                comment_notes: list[str] = []
-                extra_params: OrderedDict[str, str | bool | int] = OrderedDict()  # Holds Field parameters such as 'column'.
-                field_kwargs: dict[str, str | bool | int] = {}
-                if [row.name] == data.primary_key_columns:
-                    extra_params['primary_key'] = True
-                elif row.name in data.unique_columns:
-                    field_kwargs['unique'] = True
-                field_type = self.get_field_type(introspection, table_name, row)
-                if row.name not in data.relations:
-                    extra_params.update(field_type.params)
-                    field_kwargs.update(field_type.params)
-                    comment_notes.extend(field_type.notes)
-                if row.name == 'id' and extra_params == {'primary_key': True} and field_type.type == 'AUTO':
-                    continue
-                if row.null_ok:
-                    extra_params['null'] = True
-                if row.name not in data.relations:
-                    cls = 'PrimaryKey' if extra_params.get('primary_key') else 'Optional' if extra_params.get('null') else 'Required'
-                    attr_name, kwargs, notes = normalize_col_name(row.name)
-                    comment_notes += notes
-                    field_kwargs.update(kwargs)
-                    ordered_kwargs = OrderedDict((key, repr(field_kwargs[key])) for key in self.KWARGS_ORDER if key in field_kwargs)
-                    if (kwargs_list := ', '.join(f'{key}={val}' for key, val in ordered_kwargs.items())):
-                        kwargs_list = f', {kwargs_list}'
-                    field_desc = f'{attr_name} = {cls}({field_type.type}{kwargs_list})'
-                    if comment_notes:
-                        field_desc += '  # ' + " ".join(comment_notes)
-                    yield f'    {field_desc}'
-            for attr in data.rel_attrs:
-                model = str_to_py_identifier(attr.table, case_type='title')
-                if self.relations_counters[(table_name, attr.table)] > 1:
-                    attr.kwargs['reverse'] = attr.reverse
-                kwargs = [f'{key}={repr(val)}' for key, val in attr.kwargs.items()]
-                kwargs = ', '.join(kwargs)
-                kwargs = f', {kwargs}' if kwargs else ''
-                yield f'''    {attr.name} = {attr.cls}("{model}"{kwargs})'''
-            if len(data.primary_key_columns) > 1:
-                attrs = [c.lower() for c in data.primary_key_columns]
-                yield f"    PrimaryKey({', '.join(attrs)})"
-
     def get_field_type(self, introspection: Introspection, table_name: str, row: FieldInfo):
         """
         Given the database connection, the table name, and the cursor row
         description, this routine will return the given field type name, as
         well as any additional keyword parameters and notes for the field.
         """
-        field_params: OrderedDict[str, str | int] = OrderedDict()
         field_notes: list[str] = []
-        try:
-            field_type, opts, import_str = introspection.get_field_type(row.type_code, row)
-        except KeyError:
-            field_type = 'LongStr'
-            import_str = 'from pony.orm.ormtypes import LongStr'
-            field_notes.append('This field type is a guess.')
-            opts = None
-        if import_str:
-            self.imports.add(import_str)
-        if opts:
-            field_params.update(opts)
+        field_type, opts, import_str = introspection.get_field_type(row.type_code, row)
+        field_params: OrderedDict[str, str | int] = OrderedDict(**opts)
         if field_type == 'str' and row.internal_size and (max_length := int(row.internal_size)) != -1:
             field_params['max_len'] = max_length
         if field_type == 'Decimal':
@@ -195,4 +208,4 @@ class Command:
                 field_notes.append('scale and/or precision have been guessed, as this database handles decimal fields as float')
             field_params['precision'] = row.precision if row.precision is not None else 10
             field_params['scale'] = row.scale if row.scale is not None else 5
-        return FieldType(type=field_type, params=field_params, notes=field_notes)
+        return FieldType(import_str=import_str, type=field_type, params=field_params, notes=field_notes)

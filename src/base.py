@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, NamedTuple, NotRequired, TypedDict
+from typing import Any, ClassVar, Literal, NamedTuple, NotRequired, TypedDict
 
 from attrs import define
 from pony.orm.dbapiprovider import DBAPIProvider
@@ -8,7 +8,7 @@ from psycopg2.extensions import cursor as Cursor
 
 class TableInfo(NamedTuple):
     name: str
-    type: str
+    type: Literal["table", "view"]
 
 
 class ColumnInfo(TypedDict):
@@ -95,5 +95,5 @@ class Introspection:
     def get_relations(self, cursor: Cursor, table_name: str) -> dict[str, TRelation]:
         ...
 
-    def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
+    def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int], str | None]:
         ...

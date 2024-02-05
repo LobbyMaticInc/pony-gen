@@ -14,7 +14,9 @@ field_size_re = re.compile(r'^\s*(?:var)?char\s*\(\s*(\d+)\s*\)\s*$')
 def get_field_size(name: str):
     """ Extract the size number from a "varchar(11)" type name """
     m = field_size_re.search(name)
-    return int(m.group(1)) if m else None
+    if not m:
+        raise Exception("cant find field size")
+    return int(m.group(1))
 
 
 class Introspection(BaseIntrospection):
@@ -43,22 +45,16 @@ class Introspection(BaseIntrospection):
                'buffer': 'from pony.py23compat import buffer'}
 
     @override
-    def get_field_type(self, data_type: str | int, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
-        opts = None
+    def get_field_type(self, data_type: str | int, description: FieldInfo) -> tuple[str, dict[str, int], str | None]:
+        opts = cast(dict[str, int], {})
         data_type = str(data_type).lower()
         try:
             field_type = self.data_types_reverse[data_type]
         except KeyError:
             field_type = 'str'
-            size = get_field_size(data_type)
-            assert size is not None
-            opts = {'max_len': size}
-        _import = self.imports.get(field_type)
-        if description.default and 'nextval' in description.default:
-            # ???
-            if field_type == 'int':
-                return 'AUTO', opts, _import
-        return field_type, opts, _import
+            opts['max_len'] = get_field_size(data_type)
+        field_type = 'AUTO' if description.default and 'nextval' in description.default and field_type == 'int' else field_type
+        return field_type, opts, self.imports.get(field_type)
 
     @override
     def get_table_list(self, cursor: Cursor):

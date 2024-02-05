@@ -38,20 +38,17 @@ class Introspection(BaseIntrospection):
                'Decimal': 'from decimal import Decimal'}
 
     @override
-    def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int] | None, str | None]:
-        field_type, opts, _import = self.data_types_reverse[int(data_type)], None, None
-        assert _import is None
-        _import = self.imports.get(field_type)
-        if description.default and 'nextval' in description.default:
-            if field_type == 'int':
-                return 'AUTO', opts, _import
-        return field_type, opts, _import
+    def get_field_type(self, data_type: int | str, description: FieldInfo) -> tuple[str, dict[str, int], str | None]:
+        field_type = self.data_types_reverse[int(data_type)]
+        field_type = 'AUTO'if 'nextval' in (description.default or '') and field_type == 'int' else field_type
+        opts = cast(dict[str, int], {})
+        return field_type, opts, self.imports.get(field_type)
 
     @override
     def get_table_list(self, cursor: Cursor):
         """Return a list of table and view names in the current database."""
         cursor.execute("SHOW FULL TABLES")
-        return [TableInfo(row[0], {'BASE TABLE': 't', 'VIEW': 'v'}[row[1]]) for row in cursor.fetchall()]
+        return [TableInfo(row[0], 'table' if row[1] == 'TABLE' else "view") for row in cursor.fetchall()]
 
     @override
     def get_table_description(self, cursor: Cursor, table_name: str):

@@ -1,5 +1,4 @@
 import ast
-import typing as t
 from ast import (AST, AnnAssign, Assign, Attribute, Call, ClassDef, Constant,
                  Expr, FunctionDef, Module, Name, Return, arg, arguments,
                  keyword, unparse)
@@ -7,32 +6,13 @@ from collections import defaultdict
 from itertools import chain
 from keyword import iskeyword
 from pathlib import Path
-from typing import Iterable, cast
+from typing import cast
 
-import inflection
 from pony.orm import (Database, Optional, PrimaryKey, Required, Set,
                       db_session, select)
-from slugify import slugify
 
-
-def str_to_py_identifier(input_string: str, *, case_type: t.Literal['snake', 'camel', 'title', 'const'] = 'snake'):
-    sanitized_string = slugify(input_string, separator='_').replace('.', '_')
-    if not sanitized_string or not sanitized_string[0].isalpha():
-        sanitized_string = f"_{''.join(filter(str.isalnum, sanitized_string))}"
-    if iskeyword(sanitized_string):
-        sanitized_string = f"{sanitized_string}_"
-    match case_type:
-        case 'snake':
-            return inflection.underscore(sanitized_string)
-        case 'camel':
-            return inflection.camelize(sanitized_string, False)
-        case 'title':
-            has_leading_underscore = '_' if sanitized_string.startswith('_') else ''
-            title_cased = ''.join(word.capitalize() for word in sanitized_string.split('_'))
-            return has_leading_underscore + title_cased
-        case 'const':
-            return inflection.underscore(sanitized_string).upper()
-
+from src.utils import str_to_py_identifier
+from utils import create_enum_ast
 
 PG_TO_PY_TYPE_MAP = {'integer': 'int',
                      'bigint': 'int',
@@ -157,19 +137,6 @@ class InformationSchemaColumns(db.Entity):
     PrimaryKey(table_schema, table_name, column_name)
 
 
-def create_enum_ast(name: str, values: Iterable[str]):
-    trimmed_name = "e_" + "_".join(name.split("_")[:-1])
-    enum_name = str_to_py_identifier(trimmed_name, case_type='title')
-    return ClassDef(name=enum_name,
-                    decorator_list=[Attribute(value=Name(id='strawberry'), attr='enum')],
-                    bases=[Name(id='Enum')],
-                    keywords=[],
-                    body=[Assign(targets=[Name(id=str_to_py_identifier(enum_value, case_type='const'))],
-                                 value=Constant(value=(enum_value), kind=None),
-                                 lineno=None,
-                                 type_comment=None) for enum_value in values])
-
-
 def get_table_asts(table_name: str, columns: list[InformationSchemaColumns]) -> list[AST]:
     pony_model_body: list[Expr | Assign | FunctionDef] = [Assign(targets=[Name(id="_table_")], value=Constant(value=table_name), lineno=None, simple=1)]
     enums: list[ClassDef] = []
@@ -215,7 +182,7 @@ def get_table_asts(table_name: str, columns: list[InformationSchemaColumns]) -> 
                 pony_col_wrapper = 'Required'
             case _:
                 pony_col_wrapper = 'Optional'
-                gql_assign_type += "|None"
+                gql_assign_type += " | None"
         keyword_dict = {'column': col.column_name,
                         'sql_default': col.column_default,
                         "nullable": col.is_nullable == "YES",
@@ -224,7 +191,7 @@ def get_table_asts(table_name: str, columns: list[InformationSchemaColumns]) -> 
                         'scale': col.numeric_scale if pony_assign_type == "Decimal" else None,
                         'unique': True if col.column_name in unique_keys else None}
         keyword_asts = [keyword(arg=arg, value=Constant(value=value)) for arg, value in keyword_dict.items() if value is not None]
-        santiized_column_name = col.column_name + ("_"if iskeyword(col.column_name) else "")
+        santiized_column_name = str_to_py_identifier(col.column_name, case_type='snake')
         pony_model_body.append(Assign(targets=[Name(id=santiized_column_name)],
                                       value=Call(func=Name(id=pony_col_wrapper),
                                                  args=[Name(id=pony_assign_type)],
@@ -258,7 +225,7 @@ def get_table_asts(table_name: str, columns: list[InformationSchemaColumns]) -> 
                      decorator_list=[Attribute(value=Name(id='strawberry'), attr='type')],
                      bases=[],
                      keywords=[],
-                     body=[gql_type_body]),
+                     body=gql_type_body),
             ClassDef(name=pony_class_name,
                      decorator_list=[],
                      bases=[Name(id='db.Entity')],
